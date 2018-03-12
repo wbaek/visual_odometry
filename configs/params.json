@@ -1,0 +1,21 @@
+{
+    "preprocessing": {
+        "gaussian_blur": {
+            "kernel_size": [5, 5]
+        }
+    },
+    "detector": {
+        "type": "FAST",
+        "threshold": 50,
+        "nonmax_supression": true
+    },
+    "tracker": {
+        "window_size": [21, 21],
+        "max_level": 3,
+        "min_eigen_threshold": 0.001
+    },
+    "pose_estimator": {
+        "focal_length": 718.8560,
+        "principle_point": [607.1928, 185.2157]
+    }
+}
