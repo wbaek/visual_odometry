@@ -31,15 +31,13 @@ def main(args, configs):
         elapsed.tic('tracking')
 
         keypoints = detector.detect(image)
-        points = modules.Utils.kp2np(keypoints)
         histories[-1].keypoints = keypoints
         elapsed.tic('detection')
 
+        points = modules.Utils.kp2np(keypoints)
         histories[-1].points = modules.Utils.nonmax_supression(modules.Utils.append(tracked_pair[1], points))
-        
         elapsed.tic('appending')
 
-        #'''
         if len(tracked_pair[0]) > 8:
             focal = configs['pose_estimator']['focal_length']
             pp = tuple(configs['pose_estimator']['principle_point'])
@@ -51,11 +49,9 @@ def main(args, configs):
             histories[-1].inlier_pair = inlier_pair
             elapsed.tic('pose_estimation')
 
-        #'''
-
         logging.info(filename)
-        logging.info(elapsed)
         logging.info(histories[-1])
+        logging.info(elapsed)
 
         modules.Utils.draw(original, histories[-5:])
         cv2.imshow('image', original)
