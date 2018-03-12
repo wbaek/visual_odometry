@@ -40,7 +40,6 @@ class Tracker(object):
             criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01)
         )
         return Utils.remove_outlier(prev_points, curr_points, status)
-        #return [prev_points[status==1], curr_points[status==1]]
 
 
 class Utils(object):
@@ -48,7 +47,6 @@ class Utils(object):
     def remove_outlier(pt1, pt2, status):
         status = status.reshape(status.shape[0])
         return [pt1[status>0], pt2[status>0]]
-        #return list(zip( *[[p, c] for p, c, s in zip(pt1, pt2, status) if s == 1] ) )
 
     @staticmethod
     def kp2np(keypoints):
@@ -60,8 +58,7 @@ class Utils(object):
         return np.array([points[i] for k, i in hashed.items()])
 
     @staticmethod
-    def append(points1, points2, threshold=5.0):
-        #logging.info('%s %s', points1, points2)
+    def append(points1, points2):
         if len(points1) == 0:
             return points2
         if len(points2) == 0:
