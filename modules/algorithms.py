@@ -1,3 +1,6 @@
+from __future__ import absolute_import
+from modules.utils import Utils
+
 import logging
 import copy
 import numpy as np
@@ -41,42 +44,25 @@ class Tracker(object):
         )
         return Utils.remove_outlier(prev_points, curr_points, status)
 
+class PoseEstimator(object):
+    def __init__(self, configs):
+        self.configs = configs
 
-class Utils(object):
-    @staticmethod
-    def remove_outlier(pt1, pt2, status):
-        status = status.reshape(status.shape[0])
-        return [pt1[status>0], pt2[status>0]]
+    def estimate(self, points1, points2):
+        if len(points1) < 8 or len(points2) < 8:
+            raise ValueError('arguments points1 and points2 are must larger than 8 elements')
+        if len(points1) != len(points2):
+            raise ValueError('arguments points1 and points2 are same number of elements')
 
-    @staticmethod
-    def kp2np(keypoints):
-        return np.array([kp.pt for kp in keypoints], dtype=np.float32)
+        focal_length = self.configs['focal_length']
+        principle_point = tuple(self.configs['principle_point'])
 
-    @staticmethod
-    def nonmax_supression(points, scale=5.0):
-        hashed = {hash( tuple([int(p/scale+0.5) for p in pt]) ):i for i, pt in enumerate(points)}
-        return np.array([points[i] for k, i in hashed.items()])
+        essential, status = cv2.findEssentialMat(points1, points2,
+            focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.999, threshold=1.0)
+        inlier_pair = Utils.remove_outlier(points1, points2, status)
+        _, rotation, translation, status = cv2.recoverPose(essential, inlier_pair[0], inlier_pair[1],
+            focal=focal_length, pp=principle_point)
+        inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+        return rotation, translation, inlier_pair
 
-    @staticmethod
-    def append(points1, points2):
-        if len(points1) == 0:
-            return points2
-        if len(points2) == 0:
-            return points1
-        return np.concatenate((points1, points2), axis=0)
-
-    @staticmethod
-    def draw(image, histories):
-        num_histories = len(histories)
-        for i, history in enumerate(histories):
-            ratio = 1.0 * i / num_histories
-            inlier_pair = history.tracked_pair if history.inlier_pair is None else history.inlier_pair
-            for pt1, pt2 in zip(*inlier_pair):
-                cv2.line(image, tuple([int(v) for v in pt1]), tuple([int(v) for v in pt2]),
-                    color=(0, 255*(ratio), 255*(1-ratio)), thickness=2)
-        for pt2 in histories[-1].points:
-            cv2.circle(image, tuple([int(v) for v in pt2]), radius=3,
-                color=(255, 255, 255), thickness=-1)
-            cv2.circle(image, tuple([int(v) for v in pt2]), radius=2,
-                color=(0, 0, 0), thickness=-1)
 

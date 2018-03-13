@@ -13,10 +13,11 @@ def main(args, configs):
     preprocessor = modules.Preprocessor(configs['preprocessing'])
     detector = modules.Detector(configs['detector'])
     tracker = modules.Tracker(configs['tracker'])
+    estimator = modules.PoseEstimator(configs['pose_estimator'])
     elapsed = modules.Elapsed()
 
     histories = []
-    for frame in range(0, 1000):
+    for frame in range(0, 10000):
         elapsed.clear()
 
         filename = '%s/image_2/%06d.png'%(args.path, frame)
@@ -38,22 +39,21 @@ def main(args, configs):
         histories[-1].points = modules.Utils.nonmax_supression(modules.Utils.append(tracked_pair[1], points))
         elapsed.tic('appending')
 
-        if len(tracked_pair[0]) > 8:
-            focal = configs['pose_estimator']['focal_length']
-            pp = tuple(configs['pose_estimator']['principle_point'])
-            essential, status = cv2.findEssentialMat(tracked_pair[1], tracked_pair[0], focal=focal, pp=pp, method=cv2.RANSAC, prob=0.999, threshold=1.0)
-            inlier_pair = modules.Utils.remove_outlier(tracked_pair[0], tracked_pair[1], status)
-            _, rotation, translation, status = cv2.recoverPose(essential, inlier_pair[1], inlier_pair[0], focal=focal, pp=pp)
-            inlier_pair = modules.Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
-
+        try:
+            R, t, inlier_pair = estimator.estimate(tracked_pair[0], tracked_pair[1])
+            histories[-1].pose = [R, t]
             histories[-1].inlier_pair = inlier_pair
-            elapsed.tic('pose_estimation')
+        except ValueError as e:
+            logging.warning(e)
+        elapsed.tic('pose_estimation')
+
+        modules.Utils.draw(original, histories[-5:])
+        elapsed.tic('draw_result')
 
         logging.info(filename)
         logging.info(histories[-1])
         logging.info(elapsed)
 
-        modules.Utils.draw(original, histories[-5:])
         cv2.imshow('image', original)
         cv2.waitKey(1)
 
