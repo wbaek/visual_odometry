@@ -47,22 +47,35 @@ class Tracker(object):
 class PoseEstimator(object):
     def __init__(self, configs):
         self.configs = configs
+        self.MIN_POINTS_THRESHOLD = 8
+        self.EPSILON_THRESHOLD = 5.0
 
-    def estimate(self, points1, points2):
-        if len(points1) < 8 or len(points2) < 8:
-            raise ValueError('arguments points1 and points2 are must larger than 8 elements')
-        if len(points1) != len(points2):
+    def estimate(self, prev_points, curr_points):
+        if len(prev_points) < self.MIN_POINTS_THRESHOLD or len(curr_points) < self.MIN_POINTS_THRESHOLD:
+            raise ValueError('arguments points1 and points2 are must larger than %d elements'%self.MIN_POINTS_THRESHOLD)
+        if len(prev_points) != len(curr_points):
             raise ValueError('arguments points1 and points2 are same number of elements')
 
         focal_length = self.configs['focal_length']
         principle_point = tuple(self.configs['principle_point'])
 
-        essential, status = cv2.findEssentialMat(points1, points2,
-            focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.999, threshold=1.0)
-        inlier_pair = Utils.remove_outlier(points1, points2, status)
-        _, rotation, translation, status = cv2.recoverPose(essential, inlier_pair[0], inlier_pair[1],
-            focal=focal_length, pp=principle_point)
+        inlier_pair = [prev_points, curr_points]
+        essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
+            focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.95, threshold=3.0)
         inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+        essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
+            focal=focal_length, pp=principle_point, method=cv2.LMEDS, prob=0.90)
+        inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+
+        num_inliers, rotation, translation, status = cv2.recoverPose(essential, inlier_pair[1], inlier_pair[0],
+            focal=focal_length, pp=principle_point)
+
+        eps = np.sum(np.abs(inlier_pair[0] - inlier_pair[1])/len(inlier_pair[0]))
+        if num_inliers >= self.MIN_POINTS_THRESHOLD//2 and eps > self.EPSILON_THRESHOLD:
+            inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+        else:
+            logging.warning('inliers:%d num_inliers:%d eps:%.3f', len(inlier_pair[0]), num_inliers, eps)
+            rotation, translation = np.eye(3), np.zeros((3, 1))
         return rotation, translation, inlier_pair
 
 

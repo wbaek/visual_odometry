@@ -17,13 +17,13 @@ class History(object):
         self.elapsed = elapsed
 
     def __repr__(self):
-        return 'original:{} image:{} #keypoints:{} points:{} #tracked_pair:{} #inlier_pair:{} pose:{}'.format(
+        return 'original:{} image:{} #keypoints:{} #points:{} #tracked_pair:{} #inlier_pair:{} pose:{}'.format(
             self.original.shape if self.original is not None else None,
             self.image.shape if self.image is not None else None,
             len(self.keypoints) if self.keypoints is not None else None,
-            self.points.shape if self.points is not None else None,
-            [len(points) for points in self.tracked_pair] if self.tracked_pair is not None else None,
-            [len(points) for points in self.inlier_pair] if self.inlier_pair is not None else None,
+            len(self.points) if self.points is not None else None,
+            len(self.tracked_pair[0]) if self.tracked_pair is not None else None,
+            len(self.inlier_pair[0]) if self.inlier_pair is not None else None,
             [p.shape for p in self.pose] if self.pose is not None else None,
         )
 
