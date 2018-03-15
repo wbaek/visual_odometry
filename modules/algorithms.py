@@ -24,9 +24,21 @@ class Detector(object):
     def detect(self, image):
         return self.detector.detect(image, None)
 
+        self.configs = configs
+
 class Tracker(object):
     def __init__(self, configs):
         self.configs = configs
+ 
+    def _track(self, prev_image, curr_image, prev_points):
+        curr_points, status, err = cv2.calcOpticalFlowPyrLK(
+            prev_image, curr_image, prev_points, None,
+            winSize=tuple(self.configs['window_size']),
+            maxLevel=self.configs['max_level'],
+            minEigThreshold=self.configs['min_eigen_threshold'],
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01)
+        )
+        return curr_points, status
 
     def track(self, histories):
         if len(histories) <= 1:
@@ -35,14 +47,19 @@ class Tracker(object):
         prev_points = histories[-2].points
 
         curr_image = histories[-1].image
-        curr_points, status, err = cv2.calcOpticalFlowPyrLK(
-            prev_image, curr_image, prev_points, None,
-            winSize=tuple(self.configs['window_size']),
-            maxLevel=self.configs['max_level'],
-            minEigThreshold=self.configs['min_eigen_threshold'],
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01)
-        )
+        curr_points, status = self._track(prev_image, curr_image, prev_points)
         return Utils.remove_outlier(prev_points, curr_points, status)
+
+class Matcher(object):
+    def __init__(self, configs):
+        self.configs = configs
+        index_params = dict(algorithm=cv2.FLANN_INDEX_KDTREE, trees=5)
+        search_params = dict(checks=50)
+        self.flann = cv2.FlannBasedMatcher(index_params,search_params)
+
+    def match(self, description1, description2, threshold):
+        matches = self.flann.radiusMatch(description1, description2, threshold)
+        return matches
 
 class PoseEstimator(object):
     def __init__(self, configs):

@@ -9,6 +9,7 @@ class History(object):
         elapsed=None):
         self.original = original
         self.image = image
+
         self.keypoints = keypoints
         self.points = points
         self.tracked_pair = tracked_pair
