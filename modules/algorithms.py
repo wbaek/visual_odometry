@@ -20,17 +20,19 @@ class Detector(object):
         self.configs = configs
         self.detector = cv2.FastFeatureDetector_create(
             threshold=configs['threshold'], nonmaxSuppression=configs['nonmax_supression'])
+        self.descriptor = cv2.ORB_create()
 
     def detect(self, image):
         return self.detector.detect(image, None)
 
-        self.configs = configs
+    def compute(self, image, keypoints):
+        return self.descriptor.compute(image, keypoints)
 
 class Tracker(object):
     def __init__(self, configs):
         self.configs = configs
  
-    def _track(self, prev_image, curr_image, prev_points):
+    def track(self, prev_image, curr_image, prev_points):
         curr_points, status, err = cv2.calcOpticalFlowPyrLK(
             prev_image, curr_image, prev_points, None,
             winSize=tuple(self.configs['window_size']),
@@ -40,59 +42,50 @@ class Tracker(object):
         )
         return curr_points, status
 
-    def track(self, histories):
-        if len(histories) <= 1:
-            return [[], []]
-        prev_image = histories[-2].image
-        prev_points = histories[-2].points
-
-        curr_image = histories[-1].image
-        curr_points, status = self._track(prev_image, curr_image, prev_points)
-        return Utils.remove_outlier(prev_points, curr_points, status)
-
-class Matcher(object):
-    def __init__(self, configs):
-        self.configs = configs
-        index_params = dict(algorithm=cv2.FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
-        self.flann = cv2.FlannBasedMatcher(index_params,search_params)
-
-    def match(self, description1, description2, threshold):
-        matches = self.flann.radiusMatch(description1, description2, threshold)
-        return matches
+    def update(self, keypoints, points):
+        keypoints = [copy.deepcopy(kp) for kp in keypoints]
+        results = []
+        for kp, pt in zip(keypoints, points):
+            kp.pt = tuple(pt)
+            results.append(kp)
+        return results
 
 class PoseEstimator(object):
     def __init__(self, configs):
         self.configs = configs
         self.MIN_POINTS_THRESHOLD = 8
         self.EPSILON_THRESHOLD = 5.0
+        self.focal_length = self.configs['focal_length']
+        self.principle_point = tuple(self.configs['principle_point'])
 
-    def estimate(self, prev_points, curr_points):
+    def essential(self, prev_points, curr_points):
         if len(prev_points) < self.MIN_POINTS_THRESHOLD or len(curr_points) < self.MIN_POINTS_THRESHOLD:
             raise ValueError('arguments points1 and points2 are must larger than %d elements'%self.MIN_POINTS_THRESHOLD)
         if len(prev_points) != len(curr_points):
             raise ValueError('arguments points1 and points2 are same number of elements')
 
-        focal_length = self.configs['focal_length']
-        principle_point = tuple(self.configs['principle_point'])
-
         inlier_pair = [prev_points, curr_points]
+        #'''
         essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
-            focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.95, threshold=3.0)
-        inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+            focal=self.focal_length, pp=self.principle_point, method=cv2.RANSAC, prob=0.95, threshold=3.0)
+        '''
         essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
-            focal=focal_length, pp=principle_point, method=cv2.LMEDS, prob=0.90)
-        inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+            focal=self.focal_length, pp=self.principle_point, method=cv2.LMEDS, prob=0.95)
+        '''
+        return essential, status
 
+    def pose(self, prev_points, curr_points, essential):
+        inlier_pair = [prev_points, curr_points]
         num_inliers, rotation, translation, status = cv2.recoverPose(essential, inlier_pair[1], inlier_pair[0],
-            focal=focal_length, pp=principle_point)
+            focal=self.focal_length, pp=self.principle_point)
+        inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
 
         eps = np.sum(np.abs(inlier_pair[0] - inlier_pair[1])/len(inlier_pair[0]))
         if num_inliers >= self.MIN_POINTS_THRESHOLD//2 and eps > self.EPSILON_THRESHOLD:
-            inlier_pair = Utils.remove_outlier(inlier_pair[0], inlier_pair[1], status)
+            pass
         else:
             logging.warning('inliers:%d num_inliers:%d eps:%.3f', len(inlier_pair[0]), num_inliers, eps)
             rotation, translation = np.eye(3), np.zeros((3, 1))
-        return rotation, translation, inlier_pair
+        return rotation, translation, status
 
 

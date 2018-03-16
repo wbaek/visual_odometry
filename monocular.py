@@ -30,27 +30,38 @@ def main(args, configs):
         histories.append(modules.History(original=original, image=image))
         elapsed.tic('load')
 
-        tracked_pair = tracker.track(histories)
-        histories[-1].tracked_pair = tracked_pair
-        elapsed.tic('tracking')
+        if len(histories) >= 2:
+            prev_points = histories[-2].points
+            curr_points, status = tracker.track(histories[-2].image, histories[-1].image, prev_points)
+            keypoints = tracker.update(histories[-2].keypoints, curr_points)
+            descriptions = histories[-2].descriptions
+            histories[-1].set_matches(keypoints, curr_points, descriptions, status)
+            prev_points, curr_points = modules.Utils.remove_outlier(prev_points, curr_points, status)
+            elapsed.tic('tracking')
+
+            try:
+                essential, status = estimator.essential(curr_points, prev_points)
+                histories[-1].remove_outlier(status)
+                prev_points, curr_points = modules.Utils.remove_outlier(prev_points, curr_points, status)
+
+                R, t, status = estimator.pose(curr_points, prev_points, essential)
+                histories[-1].remove_outlier(status)
+                prev_points, curr_points = modules.Utils.remove_outlier(prev_points, curr_points, status)
+
+                histories[-1].pose = [R, t]
+            except ValueError as e:
+                logging.warning(e)
+
+            global_pose[1] = global_pose[1] + global_pose[0].dot( histories[-1].pose[1] )
+            global_pose[0] = histories[-1].pose[0].dot( global_pose[0] ) 
+            elapsed.tic('pose_estimation')
 
         keypoints = detector.detect(image)
-        histories[-1].keypoints = keypoints
+        keypoints, descriptions = detector.compute(image, keypoints)
         elapsed.tic('detection')
 
-        points = modules.Utils.kp2np(keypoints)
-        histories[-1].points = modules.Utils.nonmax_supression(modules.Utils.append(tracked_pair[1], points))
+        histories[-1].add(keypoints, descriptions)
         elapsed.tic('appending')
-
-        try:
-            R, t, inlier_pair = estimator.estimate(tracked_pair[0], tracked_pair[1])
-            histories[-1].pose = [R, t]
-            histories[-1].inlier_pair = inlier_pair
-        except ValueError as e:
-            logging.warning(e)
-        global_pose[1] = global_pose[1] + global_pose[0].dot( histories[-1].pose[1] )
-        global_pose[0] = histories[-1].pose[0].dot( global_pose[0] ) 
-        elapsed.tic('pose_estimation')
 
         cv2.circle(trajectory, (global_pose[1][0]+400, -global_pose[1][2]+500), radius=2, thickness=1, color=(0, 255, 0)) 
         modules.Utils.draw(original, histories[-5:])
