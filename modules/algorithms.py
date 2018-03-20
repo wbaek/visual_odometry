@@ -80,12 +80,12 @@ class PoseEstimator(object):
         principle_point = tuple(self.configs['principle_point'])
 
         inlier_pair = [prev_points, curr_points]
-        #'''
+        '''
         essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
             focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.995, threshold=1.0)
         '''
         essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
-            focal=focal_length, pp=principle_point, method=cv2.LMEDS, prob=0.95)
+            focal=focal_length, pp=principle_point, method=cv2.LMEDS, prob=0.995)
         #'''
         status = status.reshape(status.shape[0])
         return essential, status
@@ -106,5 +106,9 @@ class PoseEstimator(object):
             logging.warning('inliers:%d num_inliers:%d eps:%.3f', len(inlier_pair[0]), num_inliers, eps)
             rotation, translation = np.eye(3), np.zeros((3, 1))
         return rotation, translation, status
+
+    def decompose(self, essential):
+        rotation, rotation2, translation = cv2.decomposeEssentialMat(essential)
+        return rotation2, translation
 
 

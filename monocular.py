@@ -60,13 +60,14 @@ def main(args, configs):
                 essential, status = estimator.essential(prev_points, curr_points)
                 histories[-1].matches = histories[-1].matches[status>0]
 
+                #R, t = estimator.decompose(essential)
+
                 matches = histories[-1].matches
                 prev_points = histories[-2].points[matches[:,0]]
                 curr_points = histories[-1].points[matches[:,1]]
                 R, t, status = estimator.pose(prev_points, curr_points, essential)
 
                 histories[-1].pose = [R, t]
-                #histories[-1].matches = histories[-1].matches[status>0]
             except Exception as e:
                 logging.warning(e)
         global_pose[1] = global_pose[1] + global_pose[0].dot( histories[-1].pose[1] )
