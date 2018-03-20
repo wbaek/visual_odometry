@@ -1,13 +1,14 @@
 {
     "preprocessing": {
         "gaussian_blur": {
-            "kernel_size": [3, 3]
+            "kernel_size": [5, 5]
         }
     },
     "detector": {
         "type": "FAST",
-        "threshold": 25,
-        "nonmax_supression": true
+        "threshold": 30,
+        "nonmax_supression": true,
+        "number_of_features": 1000,
     },
     "tracker": {
         "window_size": [21, 21],

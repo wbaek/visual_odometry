@@ -15,6 +15,7 @@ def main(args, configs):
     tracker = modules.Tracker(configs['tracker'])
     estimator = modules.PoseEstimator(configs['pose_estimator'])
     elapsed = modules.Elapsed()
+    NUMBER_OF_FEATURES = configs['detector']['number_of_features']
 
     trajectory = np.zeros((600, 800, 3), dtype=np.uint8)
 
@@ -30,31 +31,52 @@ def main(args, configs):
         histories.append(modules.History(original=original, image=image))
         elapsed.tic('load')
 
-        tracked_pair = tracker.track(histories)
-        histories[-1].tracked_pair = tracked_pair
-        elapsed.tic('tracking')
+        if len(histories) > 1:
+            points, status = tracker.track(histories[-2].image, histories[-1].image, histories[-2].points)
+            elapsed.tic('tracking')
 
-        keypoints = detector.detect(image)
-        histories[-1].keypoints = keypoints
-        elapsed.tic('detection')
+            histories[-1].keypoints = tracker.update(histories[-2].keypoints, points, status)
+            histories[-1].points = points[status>0]
+            histories[-1].descriptions = histories[-2].descriptions[status>0]
+            histories[-1].matches = np.array([[j, i] for i, j in enumerate(np.nonzero(status)[0].tolist())], dtype=np.int32)
+            elapsed.tic('copying')
 
-        points = modules.Utils.kp2np(keypoints)
-        histories[-1].points = modules.Utils.nonmax_supression(modules.Utils.append(tracked_pair[1], points))
-        elapsed.tic('appending')
+        if len(histories[-1].keypoints) < NUMBER_OF_FEATURES:
+            keypoints = detector.detect(image)
+            remain_counts = NUMBER_OF_FEATURES - len(histories[-1].keypoints)
+            keypoints = sorted(keypoints, key=lambda x: x.response, reverse=True)[:remain_counts]
 
-        try:
-            R, t, inlier_pair = estimator.estimate(tracked_pair[0], tracked_pair[1])
-            histories[-1].pose = [R, t]
-            histories[-1].inlier_pair = inlier_pair
-        except ValueError as e:
-            logging.warning(e)
+            keypoints, descriptions = detector.compute(image, keypoints)
+            elapsed.tic('detection')
+
+            histories[-1].add(keypoints, descriptions)
+            elapsed.tic('appending')
+
+        if len(histories) > 1:
+            try:
+                matches = histories[-1].matches
+                prev_points = histories[-2].points[matches[:,0]]
+                curr_points = histories[-1].points[matches[:,1]]
+                essential, status = estimator.essential(prev_points, curr_points)
+                histories[-1].matches = histories[-1].matches[status>0]
+
+                matches = histories[-1].matches
+                prev_points = histories[-2].points[matches[:,0]]
+                curr_points = histories[-1].points[matches[:,1]]
+                R, t, status = estimator.pose(prev_points, curr_points, essential)
+
+                histories[-1].pose = [R, t]
+                #histories[-1].matches = histories[-1].matches[status>0]
+            except Exception as e:
+                logging.warning(e)
         global_pose[1] = global_pose[1] + global_pose[0].dot( histories[-1].pose[1] )
         global_pose[0] = histories[-1].pose[0].dot( global_pose[0] ) 
         elapsed.tic('pose_estimation')
 
-        cv2.circle(trajectory, (global_pose[1][0]+400, -global_pose[1][2]+500), radius=2, thickness=1, color=(0, 255, 0)) 
-        modules.Utils.draw(original, histories[-5:])
-        elapsed.tic('draw_result')
+        if args.view:
+            cv2.circle(trajectory, (global_pose[1][0]+400, -global_pose[1][2]+500), radius=2, thickness=1, color=(0, 255, 0))
+            modules.Utils.draw(original, histories[-5:])
+            elapsed.tic('draw_result')
 
         logging.debug(filename)
         logging.info(histories[-1])

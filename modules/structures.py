@@ -1,10 +1,17 @@
+import logging
 import time
 
 import numpy as np
+import cv2
+
+from modules.utils import Utils
+
+FLANN_INDEX_KDTREE=0
+matcher = cv2.FlannBasedMatcher({'algorithm':FLANN_INDEX_KDTREE, 'tree':5}, {'checks':50})
 
 class History(object):
-    def __init__(self, original=None, image=None, keypoints=None,
-        points=None, tracked_pair=None, inlier_pair=None,
+    def __init__(self, original=None, image=None,
+        keypoints=[], points=None, descriptions=None, matches=[],
         pose=[np.eye(3), np.zeros((3, 1))],
         elapsed=None):
         self.original = original
@@ -12,19 +19,34 @@ class History(object):
 
         self.keypoints = keypoints
         self.points = points
-        self.tracked_pair = tracked_pair
-        self.inlier_pair = inlier_pair
+        self.descriptions = descriptions
+        self.matches = matches
+
         self.pose = pose
         self.elapsed = elapsed
 
+    def add(self, keypoints, descriptions, distance_threshold=5.0):
+        points = Utils.kp2np(keypoints)
+        if len(self.keypoints) == 0:
+            self.keypoints = keypoints
+            self.points = points
+            self.descriptions = descriptions
+            return self
+
+        _matches = matcher.radiusMatch(points, self.points, maxDistance=distance_threshold)
+        status = np.array([1 if len(match) == 0 else 0 for match in _matches])
+
+        self.keypoints += [kp for kp, s in zip(keypoints, status) if s>0]
+        self.points = np.concatenate( [self.points, points[status>0]] )
+        self.descriptions = np.concatenate( [self.descriptions, descriptions[status>0]] )
+        return self
+
     def __repr__(self):
-        return 'original:{} image:{} #keypoints:{} #points:{} #tracked_pair:{} #inlier_pair:{} pose:{}'.format(
+        return 'original:{} image:{} #keypoints:{} matches:{} pose:{}'.format(
             self.original.shape if self.original is not None else None,
             self.image.shape if self.image is not None else None,
             len(self.keypoints) if self.keypoints is not None else None,
-            len(self.points) if self.points is not None else None,
-            len(self.tracked_pair[0]) if self.tracked_pair is not None else None,
-            len(self.inlier_pair[0]) if self.inlier_pair is not None else None,
+            self.matches.shape if self.matches is not None else None,
             [p.shape for p in self.pose] if self.pose is not None else None,
         )
 

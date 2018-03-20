@@ -29,21 +29,23 @@ class Utils(object):
     @staticmethod
     def draw(image, histories):
         num_histories = len(histories)
-        for i, history in enumerate(histories):
+        for i, history in enumerate(histories[1:]):
             ratio = 1.0 * i / num_histories
-            inlier_pair = history.tracked_pair if history.inlier_pair is None else history.inlier_pair
-            for pt1, pt2 in zip(*inlier_pair):
+            matches = history.matches
+            for pt1, pt2 in zip(histories[i].points[matches[:,0]], history.points[matches[:,1]]):
                 cv2.line(image, tuple([int(v) for v in pt1]), tuple([int(v) for v in pt2]),
                     color=(0, 255*(ratio), 255*(1-ratio)), thickness=2)
+                
         for pt in histories[-1].points:
             cv2.circle(image, tuple([int(v) for v in pt]), radius=3,
                 color=(255, 255, 255), thickness=-1)
             cv2.circle(image, tuple([int(v) for v in pt]), radius=2,
                 color=(0, 0, 0), thickness=-1)
-        for pt in (histories[-1].tracked_pair if histories[-1].inlier_pair is None else histories[-1].inlier_pair)[1]:
+        if len(histories[-1].matches) == 0:
+            return
+        for pt in histories[-1].points[histories[-1].matches[:,1]]:
             cv2.circle(image, tuple([int(v) for v in pt]), radius=3,
                 color=(0, 255, 0), thickness=-1)
             cv2.circle(image, tuple([int(v) for v in pt]), radius=2,
                 color=(0, 0, 0), thickness=-1)
-
 
