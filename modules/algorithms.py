@@ -80,9 +80,14 @@ class PoseEstimator(object):
         principle_point = tuple(self.configs['principle_point'])
 
         inlier_pair = [prev_points, curr_points]
-        '''
+        #'''
         essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
             focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.995, threshold=1.0)
+        status = status.reshape(status.shape[0])
+        inlier_pair = [pt[status>0] for pt in inlier_pair]
+        essential, _ = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
+            focal=focal_length, pp=principle_point, method=cv2.RANSAC, prob=0.95, threshold=1.0)
+
         '''
         essential, status = cv2.findEssentialMat(inlier_pair[1], inlier_pair[0],
             focal=focal_length, pp=principle_point, method=cv2.LMEDS, prob=0.995)
@@ -110,5 +115,68 @@ class PoseEstimator(object):
     def decompose(self, essential):
         rotation, rotation2, translation = cv2.decomposeEssentialMat(essential)
         return rotation2, translation
+
+class Reconstructor(object):
+    def __init__(self, configs):
+        self.configs = configs
+
+        focal_length = self.configs['focal_length']
+        principle_point = tuple(self.configs['principle_point'])
+        self.intrinsic = np.array([[focal_length, 0.0, principle_point[0]], [0.0, focal_length, principle_point[1]], [0.0, 0.0, 1.0]])
+        logging.info(self.intrinsic)
+
+    def match(self, match1, match2):
+        m1 = np.array(match1)
+        m2 = np.array(match2)
+        target = m1[:,1]
+
+        match = []
+        for i, v in enumerate(m2[:,0]):
+            if v in target:
+                j = np.where(target == v)[0][0]
+                match.append([j, i])
+        return match
+
+    def reconstruct(self, histories, frames=5):
+        histories = histories[-frames:]
+
+        matches = [[pair[1], pair[1]] for pair in histories[0].matches]
+        for h in histories[1:]:
+            if len(matches) == 0:
+                raise Exception('not enough matched points')
+            matches = self.match(matches, h.matches)
+        matches = np.array(matches)
+
+        history1 = histories[0]
+        history2 = histories[-1]
+        matches1 = matches[:,0]
+        matches2 = matches[:,1]
+        points1 = history1.points[matches1, :].astype(np.float64)
+        points2 = history2.points[matches2, :].astype(np.float64)
+
+        projection1 = self.intrinsic.dot( np.concatenate(history1.pose, axis=1) ).astype(np.float64)
+        projection2 = self.intrinsic.dot( np.concatenate(history2.pose, axis=1) ).astype(np.float64)
+
+        reconstructed = cv2.triangulatePoints(
+            projection1, projection2,
+            points1.T, points2.T)
+
+        p1 = projection1.dot( reconstructed )
+        p1 = p1[:2] / p1[2]
+
+        p2 = projection2.dot( reconstructed )
+        p2 = p2[:2] / p2[2]
+
+        distance1 = np.linalg.norm(points1.T - p1, axis=0)
+        distance2 = np.linalg.norm(points2.T - p2, axis=0)
+        status = (distance1 + distance2) < 30.0
+        logging.info('reconstruction: %d -> %d', len(status), len(status[status==True]))
+
+        reconstruction = cv2.triangulatePoints(
+            projection1, projection2,
+            points1[status==True].T, points2[status==True].T)
+
+        point3D =  reconstructed[:3] / reconstructed[3]
+        return point3D.T[status == True]
 
 

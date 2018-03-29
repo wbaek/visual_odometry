@@ -13,14 +13,15 @@ def main(args, configs):
     preprocessor = modules.Preprocessor(configs['preprocessing'])
     detector = modules.Detector(configs['detector'])
     tracker = modules.Tracker(configs['tracker'])
+    reconstructor = modules.Reconstructor(configs['pose_estimator'])
     estimator = modules.PoseEstimator(configs['pose_estimator'])
+
     elapsed = modules.Elapsed()
     NUMBER_OF_FEATURES = configs['detector']['number_of_features']
 
     trajectory = np.zeros((600, 800, 3), dtype=np.uint8)
 
     histories = []
-    global_pose = [np.eye(3), np.zeros((3, 1))]
     for frame in range(0, 10000):
         elapsed.clear()
 
@@ -28,7 +29,8 @@ def main(args, configs):
         original = cv2.imread(filename, cv2.IMREAD_COLOR)
         image = preprocessor.process(original)
 
-        histories.append(modules.History(original=original, image=image))
+        histories.append(modules.History(original=original, image=image,
+            pose=histories[-1].pose if len(histories)>0 else [np.eye(3), np.zeros((3, 1))]))
         elapsed.tic('load')
 
         if len(histories) > 1:
@@ -67,21 +69,34 @@ def main(args, configs):
                 curr_points = histories[-1].points[matches[:,1]]
                 R, t, status = estimator.pose(prev_points, curr_points, essential)
 
-                histories[-1].pose = [R, t]
+                histories[-1].update([R, t])
             except Exception as e:
                 logging.warning(e)
-        global_pose[1] = global_pose[1] + global_pose[0].dot( histories[-1].pose[1] )
-        global_pose[0] = histories[-1].pose[0].dot( global_pose[0] ) 
         elapsed.tic('pose_estimation')
 
+        '''
+        NUM_FRAMES_RECONSTRUCTION = 10
+        if len(histories) > NUM_FRAMES_RECONSTRUCTION and frame%NUM_FRAMES_RECONSTRUCTION == 0:
+            try:
+                reconstructed = reconstructor.reconstruct(histories, NUM_FRAMES_RECONSTRUCTION)
+                histories[-1].reconstructed = reconstructed
+            except Exception as e:
+                logging.warning(e)
+            elapsed.tic('reconstrcuting')
+        '''
+
         if args.view:
-            cv2.circle(trajectory, (global_pose[1][0]+400, -global_pose[1][2]+500), radius=2, thickness=1, color=(0, 255, 0))
+            current = histories[-1]
+            cv2.circle(trajectory, (current.pose[1][0]+400, -current.pose[1][2]+500), radius=2, thickness=-1, color=(0, 255, 0))
+            for pt in current.reconstructed:
+                logging.info(['%.2f'%v for v in pt])
+                cv2.circle(trajectory, (int(pt[0]+400), int(-pt[2]+500)), radius=1, thickness=1, color=(0, 0, 255))
+
             modules.Utils.draw(original, histories[-5:])
             elapsed.tic('draw_result')
 
         logging.debug(filename)
         logging.info(histories[-1])
-        logging.info('frame:%05d pose:(%s)', frame, ', '.join(['%.2f'%v for v in global_pose[1].T[0]]))
         logging.info(elapsed)
         
         if args.view:# and frame%100==0:

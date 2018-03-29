@@ -6,7 +6,7 @@
 ### pre-requirements
 * ubuntu
 ```
-apt install -y libsm6 libxext-dev cmake
+apt install -y libsm6 libxext-dev libxrender-dev
 ```
 
 * mac

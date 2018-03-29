@@ -1,5 +1,6 @@
 import logging
 import time
+import copy
 
 import numpy as np
 import cv2
@@ -12,17 +13,21 @@ matcher = cv2.FlannBasedMatcher({'algorithm':FLANN_INDEX_KDTREE, 'tree':5}, {'ch
 class History(object):
     def __init__(self, original=None, image=None,
         keypoints=[], points=None, descriptions=None, matches=[],
+        reconstructed=[],
+        delta=[np.eye(3), np.zeros((3, 1))],
         pose=[np.eye(3), np.zeros((3, 1))],
         elapsed=None):
         self.original = original
         self.image = image
 
         self.keypoints = keypoints
-        self.points = points
-        self.descriptions = descriptions
+        self.points = copy.deepcopy(points)
+        self.descriptions = copy.deepcopy(descriptions)
         self.matches = matches
+        self.reconstructed = reconstructed
 
-        self.pose = pose
+        self.delta = delta
+        self.pose = copy.deepcopy(pose)
         self.elapsed = elapsed
 
     def add(self, keypoints, descriptions, distance_threshold=5.0):
@@ -41,13 +46,23 @@ class History(object):
         self.descriptions = np.concatenate( [self.descriptions, descriptions[status>0]] )
         return self
 
+    def update(self, delta):
+        self.delta = delta
+        self.pose[1] = self.pose[1] + self.pose[0].dot( delta[1] )
+        self.pose[0] = self.pose[0].dot( delta[0] )
+
     def __repr__(self):
-        return 'original:{} image:{} #keypoints:{} matches:{} pose:{}'.format(
-            self.original.shape if self.original is not None else None,
-            self.image.shape if self.image is not None else None,
+        rotation, _ = cv2.Rodrigues(self.pose[0])
+        theta = np.linalg.norm(rotation)
+        theta = theta if theta > 1e-5 else 1.0
+        rotation = list(rotation/theta)
+        return 'rotation:[{}]  translation:[{}] #keypoints:{} #points:{} matches:{} #reconstructed:{}'.format(
+            ', '.join(['%.2f'%v for v in rotation+[theta*180.0/np.pi]]),
+            ', '.join(['%.2f'%v for v in self.pose[1]]),
             len(self.keypoints) if self.keypoints is not None else None,
-            self.matches.shape if self.matches is not None else None,
-            [p.shape for p in self.pose] if self.pose is not None else None,
+            len(self.points) if self.points is not None else None,
+            len(self.matches),
+            len(self.reconstructed)
         )
 
 class Elapsed(object):

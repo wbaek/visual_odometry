@@ -8,7 +8,7 @@
         "type": "FAST",
         "threshold": 30,
         "nonmax_supression": true,
-        "number_of_features": 1000,
+        "number_of_features": 1000
     },
     "tracker": {
         "window_size": [21, 21],
